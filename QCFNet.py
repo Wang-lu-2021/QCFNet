@@ -32,7 +32,6 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
-# -------------------------- 1. 数据集模块（修复数据类型为float32） --------------------------
 class CIFAR10Dataset(Dataset):
     def __init__(self, root, train=True, transform=None, num_samples=1000):
         self.dataset = torchvision.datasets.CIFAR10(
@@ -47,16 +46,15 @@ class CIFAR10Dataset(Dataset):
 
     def __getitem__(self, idx):
         img, _ = self.dataset[self.indices[idx]]
-        img_gray = torch.mean(img, dim=0, keepdim=True)  # 彩色转灰度
-        img_gray = img_gray / 255.0 * np.pi  # 归一化到[0, π]
-        # 关键修复：强制转换为float32（与模型参数类型一致）
+        img_gray = torch.mean(img, dim=0, keepdim=True)  
+        img_gray = img_gray / 255.0 * np.pi  
         img_gray = img_gray.to(dtype=torch.float32)
 
-        # 生成伽马噪声
+        
         gamma_shape = 2.0
         gamma_scale = 1.0 / gamma_shape
         noise = np.random.gamma(shape=gamma_shape, scale=gamma_scale, size=img_gray.shape)
-        noisy_img = img_gray * torch.tensor(noise, dtype=torch.float32)  # 噪声也用float32
+        noisy_img = img_gray * torch.tensor(noise, dtype=torch.float32)  
         noisy_img = torch.clip(noisy_img, 0, np.pi)
 
         return noisy_img, img_gray
@@ -92,7 +90,7 @@ class Sentinel1Dataset(Dataset):
         if self.transform:
             clean_img = self.transform(clean_img)
             noisy_img = self.transform(noisy_img)
-        # 关键修复：强制转换为float32
+        
         clean_img = clean_img.to(dtype=torch.float32) / 255.0 * np.pi
         noisy_img = noisy_img.to(dtype=torch.float32) / 255.0 * np.pi
         clean_img = clean_img.unsqueeze(0)
@@ -103,8 +101,7 @@ class Sentinel1Dataset(Dataset):
 
 def load_dataset(dataset_type, root, batch_size=32):
     if dataset_type == 'cifar10':
-        # 修复：确保transform输出为float32
-        transform = transforms.Compose([transforms.ToTensor()])  # ToTensor默认输出float32
+        transform = transforms.Compose([transforms.ToTensor()])  
         train_set = CIFAR10Dataset(root, train=True, transform=transform, num_samples=1000)
         val_set = CIFAR10Dataset(root, train=False, transform=transform, num_samples=1000)
     elif dataset_type == 'sentinel1':
@@ -112,7 +109,7 @@ def load_dataset(dataset_type, root, batch_size=32):
             transforms.Resize((64, 64)),
             transforms.RandomRotation([0, 90, 180, 270]),
             transforms.RandomHorizontalFlip(),
-            transforms.ToTensor()  # 输出float32
+            transforms.ToTensor() 
         ])
         train_set = Sentinel1Dataset(root, train=True, transform=transform, num_pairs=2000)
         val_set = Sentinel1Dataset(root, train=False, transform=transform, num_pairs=2000)
@@ -124,7 +121,6 @@ def load_dataset(dataset_type, root, batch_size=32):
     return train_loader, val_loader
 
 
-# -------------------------- 2. 量子编码模块 --------------------------
 n_qubits = 4
 dev = qml.device('default.qubit', wires=n_qubits)
 
@@ -133,7 +129,7 @@ def dynamic_circuit(inputs, weights):
     if len(inputs) < 16:
         raise ValueError("Input length must be at least 16 (4×4 patch)")
     for i in range(4):
-        qml.Hadamard(wires=i)  # 论文要求的H门
+        qml.Hadamard(wires=i)  
         for j in range(4):
             index = i * 4 + j
             if j % 2 == 0:
@@ -183,7 +179,7 @@ class QuantumCircuitModule(nn.Module):
         return x
 
 
-# -------------------------- 3. 经典卷积模块 --------------------------
+
 class ClassicalConvModule(nn.Module):
     def __init__(self, in_channels=1, out_channels=12):
         super().__init__()
@@ -198,7 +194,7 @@ class ClassicalConvModule(nn.Module):
         return self.conv(x)
 
 
-# -------------------------- 4. 特征融合模块 --------------------------
+
 class SEBlock(nn.Module):
     def __init__(self, in_channels, reduction=4):
         super().__init__()
@@ -247,7 +243,7 @@ class QuantumClassicalFusion(nn.Module):
         return fused_se + shortcut
 
 
-# -------------------------- 5. 编码器-解码器 --------------------------
+
 class DenoisingCNN(nn.Module):
     def __init__(self, circuit_structure, c_out=12, img_size=32):
         super().__init__()
@@ -280,7 +276,7 @@ class DenoisingCNN(nn.Module):
         return decoded
 
 
-# -------------------------- 6. 损失函数 --------------------------
+
 class PerceptualLoss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -315,7 +311,7 @@ class AdaptiveLoss(nn.Module):
         target_np = target.squeeze(1).cpu().detach().numpy()
         ssim_val = np.mean([ssim(o, t, data_range=np.pi) for o, t in zip(output_np, target_np)])
         ssim_loss = 1 - ssim_val
-        ssim_loss = torch.tensor(ssim_loss, dtype=torch.float32, device=output.device)  # 强制float32
+        ssim_loss = torch.tensor(ssim_loss, dtype=torch.float32, device=output.device) 
         perceptual_loss = self.perceptual_loss(output, target)
 
         mse_weight = 1 / (mse + self.epsilon)
@@ -334,7 +330,7 @@ class AdaptiveLoss(nn.Module):
         return loss
 
 
-# -------------------------- 7. MCTS模块 --------------------------
+
 class MCTSNode:
     def __init__(self, circuit_structure, parent=None, max_gates=4, c_decay=0.999):
         self.circuit_structure = circuit_structure
@@ -429,7 +425,7 @@ def monte_carlo_tree_search(train_loader, val_loader, max_gates=4, num_simulatio
         total_loss = 0.0
         for noisy, clean in train_loader:
             noisy, clean = noisy.to(device), clean.to(device)
-            # 随机生成电路
+            
             random_crz = random.sample([('CRZ', 0, (c, t)) for c in range(4) for t in range(4) if c != t],
                                        k=random.randint(1, 4))
             pre_train_model.fusion_module.quanv = QuantumCircuitModule(random_crz)
@@ -471,7 +467,7 @@ def monte_carlo_tree_search(train_loader, val_loader, max_gates=4, num_simulatio
     return best_node.circuit_structure
 
 
-# -------------------------- 8. 训练与评估 --------------------------
+
 def train_model(model, train_loader, val_loader, epochs=20, lr=0.001, device="cpu"):
     quantum_params = [p for n, p in model.named_parameters() if 'quanv' in n]
     classical_params = [p for n, p in model.named_parameters() if 'quanv' not in n]
@@ -530,7 +526,7 @@ def evaluate_model(model, val_loader, device="cpu"):
     return mse, ssim_val, psnr_val
 
 
-# -------------------------- 9. 主函数 --------------------------
+
 if __name__ == "__main__":
     seed = 42
     random.seed(seed)
@@ -566,3 +562,4 @@ if __name__ == "__main__":
 
     sys.stdout.log.close()
     sys.stdout = sys.__stdout__
+
