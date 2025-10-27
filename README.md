@@ -34,7 +34,7 @@ No manual operation needed:
 - Final split: 800 training pairs (noisy-clean) and 200 validation pairs (randomly selected from 1000 samples).
 
 ### 3.2 Sentinel-1 Dataset (User-Prepared)
-1. **Data Source**: Retrieve Sentinel-1 GRD images (without log-scaling) from Google Earth Engine, following the paper’s processing workflow.
+1. **Data Source**: Retrieve Sentinel-1 GRD images from https://github.com/alessandrosebastianelli/sentinel_1_GRD_dataset.git, following the paper’s processing workflow.
 2. **Preprocessing**:
    - Generate clean ground truth (GT) via temporal averaging of speckle-free intensity data for the same area.
    - Add gamma-distributed speckle noise (multiplied with clean images) to simulate real-world noisy scenarios.
@@ -102,6 +102,4 @@ If you use this code or the method in your research, please cite the paper:
 }
 ```
 
-Sentinel-1 satellite dataset: https://github.com/alessandrosebastianelli/sentinel_1_GRD_dataset.git
-CIFAR10 dataset can be download in the code.
 
